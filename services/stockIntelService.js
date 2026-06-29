@@ -176,61 +176,77 @@ async function getKSE100Volume() {
   }
 }
 
-/* ========== VOLUME SPEED ========== */
-let volumeSpeedCache = { lastVolume: 0, lastTime: 0, candles: [] };
+/* ========== INTRADAY SIGNAL ENGINE ========== */
+function calculateIntraday(stock) {
+  const {
+    price, open, high, low, prevClose, rsi, volume, volAvg10d,
+    pivot, r1, r2, r3, s1, s2, upperCircuit, lowerCircuit,
+    changePercent, bidAskRatio
+  } = stock;
 
-function analyzeVolumeSpeed(currentVolume, currentTime) {
-  if (volumeSpeedCache.lastVolume === 0) {
-    volumeSpeedCache = { lastVolume: currentVolume, lastTime: currentTime, candles: [] };
-    return { speed: 0, perMinute: 0, trend: 'INIT', message: 'Initializing...', color: '#64748b' };
-  }
-  const volDiff = currentVolume - volumeSpeedCache.lastVolume;
-  const timeDiff = (currentTime - volumeSpeedCache.lastTime) / 60000;
-  if (timeDiff <= 0) return null;
-  const perMinute = Math.round(volDiff / timeDiff);
-  volumeSpeedCache.candles.push({ time: currentTime, volume: volDiff, perMinute });
-  if (volumeSpeedCache.candles.length > 30) volumeSpeedCache.candles.shift();
+  // 7 checks for buy signal
+  const checks = {
+    bullish: price > open,
+    abovePrevClose: price > prevClose,
+    rsiGood: rsi > 40 && rsi < 75,
+    volumeGood: volume > (volAvg10d * 0.8),
+    abovePivot: price >= pivot,
+    positiveChange: changePercent > 0,
+    bidAskGood: bidAskRatio > 0.8
+  };
 
-  const recent = volumeSpeedCache.candles.slice(-5);
-  const avgSpeed = recent.reduce((s, c) => s + c.perMinute, 0) / (recent.length || 1);
-  const splitIdx = Math.floor(recent.length / 2);
-  const firstSlice = recent.slice(0, splitIdx);
-  const secondSlice = recent.slice(splitIdx);
-  const firstAvg = firstSlice.length ? firstSlice.reduce((s, c) => s + c.perMinute, 0) / firstSlice.length : 0;
-  const secondAvg = secondSlice.length ? secondSlice.reduce((s, c) => s + c.perMinute, 0) / secondSlice.length : 0;
+  const passed = Object.values(checks).filter(Boolean).length;
+  const isBuy = passed >= 5;
 
-  let trend, color, message;
-  if (secondAvg > firstAvg * 1.5) {
-    trend = 'SURGING'; color = '#a855f7'; message = `Volume surging — ${perMinute.toLocaleString()}/min`;
-  } else if (secondAvg > firstAvg * 1.2) {
-    trend = 'ACCELERATING'; color = '#f97316'; message = `Volume accelerating — ${perMinute.toLocaleString()}/min`;
-  } else if (secondAvg < firstAvg * 0.5) {
-    trend = 'SLOWING'; color = '#64748b'; message = `Volume slowing — ${perMinute.toLocaleString()}/min`;
-  } else if (perMinute > avgSpeed * 1.5) {
-    trend = 'SPIKE'; color = '#ef4444'; message = `Volume spike! ${perMinute.toLocaleString()}/min`;
+  // Entry logic
+  let entry = price;
+  if (price < pivot) {
+    entry = +(pivot + 0.01).toFixed(2);
+  } else if (price > r1 && price < r2) {
+    entry = price; // momentum zone
   } else {
-    trend = 'STEADY'; color = '#22c55e'; message = `Steady volume — ${perMinute.toLocaleString()}/min`;
+    entry = +(price + 0.05).toFixed(2);
   }
 
-  volumeSpeedCache.lastVolume = currentVolume;
-  volumeSpeedCache.lastTime = currentTime;
-  return { currentVolume, volDiff, timeDiffSeconds: Math.round(timeDiff * 60), perMinute, avgSpeed5Min: Math.round(avgSpeed), trend, color, message };
-}
+  // Stop loss: max of S1, today's low, or 1.5% below entry
+  let stopLoss = Math.max(s1 || 0, low || 0, +(entry * 0.985).toFixed(2));
+  if (stopLoss >= entry) stopLoss = +(entry * 0.985).toFixed(2);
+  if (stopLoss < lowerCircuit) stopLoss = lowerCircuit;
 
-async function getVolumeSpeed() {
-  try {
-    const data = await fetchMarketData();
-    const kseData = data?.data?.in?.KSE100;
-    if (!kseData) return null;
-    const currentVolume = +kseData.v || 0;
-    const currentTime = Date.now();
-    const speed = analyzeVolumeSpeed(currentVolume, currentTime);
-    if (!speed) return null;
-    const avg10 = +kseData.v10a || 1;
-    return { ...speed, ratioVsAvg: +((currentVolume / avg10) * 100).toFixed(1), indexValue: +kseData.c || 0, changePercent: +kseData.pch ? +(kseData.pch * 100).toFixed(2) : 0 };
-  } catch (e) {
-    return null;
-  }
+  // Targets
+  const target1 = r1 || +(entry * 1.02).toFixed(2);
+  const target2 = r2 || +(entry * 1.04).toFixed(2);
+  const target3 = r3 || upperCircuit || +(entry * 1.06).toFixed(2);
+
+  // Risk:Reward
+  const risk = +(entry - stopLoss).toFixed(2);
+  const reward1 = +(target1 - entry).toFixed(2);
+  const reward2 = +(target2 - entry).toFixed(2);
+  const reward3 = +(target3 - entry).toFixed(2);
+
+  const rr1 = risk > 0 ? +(reward1 / risk).toFixed(2) : 0;
+  const rr2 = risk > 0 ? +(reward2 / risk).toFixed(2) : 0;
+  const rr3 = risk > 0 ? +(reward3 / risk).toFixed(2) : 0;
+
+  let confidence = 'LOW';
+  if (passed >= 6) confidence = 'HIGH';
+  else if (passed >= 4) confidence = 'MEDIUM';
+
+  return {
+    isBuy,
+    entry: +entry.toFixed(2),
+    stopLoss: +stopLoss.toFixed(2),
+    target1: +target1.toFixed(2),
+    target2: +target2.toFixed(2),
+    target3: +target3.toFixed(2),
+    risk: risk > 0 ? risk : 0.01,
+    rr1,
+    rr2,
+    rr3,
+    confidence,
+    score: passed,
+    checks
+  };
 }
 
 /* ========== FETCH ALL STOCKS ========== */
@@ -254,8 +270,6 @@ async function fetchAllStocks() {
         kseVolumeCache = volAnalysis;
         kseVolumeLastFetch = Date.now();
         console.log(`📊 KSE100 Vol: ${volAnalysis.emoji} ${volAnalysis.level} (${volAnalysis.ratioVs10Day}% of 10d avg)`);
-        const speed = analyzeVolumeSpeed(+kseData.v || 0, Date.now());
-        if (speed) console.log(`⚡ Vol Speed: ${speed.trend} — ${speed.perMinute.toLocaleString()}/min`);
       }
 
       const stocks = Object.entries(raw)
@@ -263,41 +277,65 @@ async function fetchAllStocks() {
           if (!s.c || +s.c <= 0) return false;
           return true;
         })
-        .map(([sym, s]) => ({
-          symbol: sym, name: s.nm, price: +s.c, open: +s.o, high: +s.h, low: +s.l,
-          volume: +s.v, change: +s.ch, changePercent: +((s.pch || 0) * 100).toFixed(2),
-          prevClose: +s.ldcp, prevVolume: +s.ldcv,
-          rsi: +(s.rsi ?? 0),
-          upperCircuit: +s.uc, lowerCircuit: +s.lc,
-          pivot: +(s.pp?.pp ?? 0),
-          r1: +(s.pp?.r1 ?? 0), r2: +(s.pp?.r2 ?? 0),
-          s1: +(s.pp?.s1 ?? 0), s2: +(s.pp?.s2 ?? 0),
-          perf1w: +(s.p1w ?? 0), perf1m: +(s.p1m ?? 0), perf3m: +(s.p3m ?? 0), perf1y: +(s.p1y ?? 0), perfYtd: +(s.pytd ?? 0),
-          eps: +(s.eps ?? 0), dps: +(s.dps ?? 0), pe: +(s.pr ?? 0), divYield: +(s.di ?? 0),
-          volAvg1w: +(s.vaw ?? 0), volAvg10d: +(s.va10d ?? 0), volAvg1m: +(s.vam ?? 0), volAvg30d: +(s.v30a ?? 0),
-          beta1m: +(s.bt?.['1m'] ?? 0), beta1y: +(s.bt?.['1y'] ?? 0),
-          bidPrice: s.bidp ? +s.bidp : 0, bidVolume: s.bidv ? +s.bidv : 0,
-          askPrice: s.askp ? +s.askp : 0, askVolume: s.askv ? +s.askv : 0,
-          spreadAbs: (s.askp && s.bidp) ? +(+s.askp - +s.bidp).toFixed(2) : 0,
-          spreadPct: (s.askp && s.bidp && +s.bidp > 0) ? +(((+s.askp - +s.bidp) / +s.bidp) * 100).toFixed(2) : 0,
-          bidAskRatio: (s.bidv && s.askv && +s.askv > 0) ? +((+s.bidv / +s.askv)).toFixed(2) : 0,
-          status: 'ACTIVE', lastUpdate: s.d,
-          signal: (() => {
-            const pch = +s.pch || 0;
-            const rsi = +(s.rsi ?? 0);
-            const ratio = (s.bidv && s.askv && +s.askv > 0) ? +s.bidv / +s.askv : 1;
-            let score = 0;
-            if (pch > 0.01) score++;
-            if (pch < -0.01) score--;
-            if (rsi < 40) score++;
-            if (rsi > 60) score--;
-            if (ratio > 1.2) score++;
-            if (ratio < 0.8) score--;
-            return score >= 2 ? 'STRONG_BUY' : score === 1 ? 'BUY' : score === -1 ? 'SELL' : score <= -2 ? 'STRONG_SELL' : 'NEUTRAL';
-          })(),
-        }));
+        .map(([sym, s]) => {
+          const price = +s.c;
+          const open = +s.o;
+          const high = +s.h;
+          const low = +s.l;
+          const prevClose = +s.ldcp;
+          const rsi = +(s.rsi ?? 0);
+          const volume = +s.v;
+          const volAvg10d = +(s.va10d ?? 0);
+          const pivot = +(s.pp?.pp ?? 0);
+          const r1 = +(s.pp?.r1 ?? 0);
+          const r2 = +(s.pp?.r2 ?? 0);
+          const r3 = +(s.pp?.r3 ?? 0);
+          const s1 = +(s.pp?.s1 ?? 0);
+          const s2 = +(s.pp?.s2 ?? 0);
+          const s3 = +(s.pp?.s3 ?? 0);
+          const upperCircuit = +s.uc;
+          const lowerCircuit = +s.lc;
+          const changePercent = +((s.pch || 0) * 100).toFixed(2);
+          const bidAskRatio = (s.bidv && s.askv && +s.askv > 0) ? +((+s.bidv / +s.askv)).toFixed(2) : 0;
 
-      console.log(`✅ ${stocks.length} stocks loaded`);
+          const stock = {
+            symbol: sym, name: s.nm, price, open, high, low,
+            volume, change: +s.ch, changePercent,
+            prevClose, prevVolume: +s.ldcv,
+            rsi,
+            upperCircuit, lowerCircuit,
+            pivot, r1, r2, r3, s1, s2, s3,
+            perf1w: +(s.p1w ?? 0), perf1m: +(s.p1m ?? 0), perf3m: +(s.p3m ?? 0), perf1y: +(s.p1y ?? 0), perfYtd: +(s.pytd ?? 0),
+            eps: +(s.eps ?? 0), dps: +(s.dps ?? 0), pe: +(s.pr ?? 0), divYield: +(s.di ?? 0),
+            volAvg1w: +(s.vaw ?? 0), volAvg10d, volAvg1m: +(s.vam ?? 0), volAvg30d: +(s.v30a ?? 0),
+            beta1m: +(s.bt?.['1m'] ?? 0), beta1y: +(s.bt?.['1y'] ?? 0),
+            bidPrice: s.bidp ? +s.bidp : 0, bidVolume: s.bidv ? +s.bidv : 0,
+            askPrice: s.askp ? +s.askp : 0, askVolume: s.askv ? +s.askv : 0,
+            spreadAbs: (s.askp && s.bidp) ? +(+s.askp - +s.bidp).toFixed(2) : 0,
+            spreadPct: (s.askp && s.bidp && +s.bidp > 0) ? +(((+s.askp - +s.bidp) / +s.bidp) * 100).toFixed(2) : 0,
+            bidAskRatio,
+            status: 'ACTIVE', lastUpdate: s.d,
+            signal: (() => {
+              const pch = +s.pch || 0;
+              const r = +(s.rsi ?? 0);
+              const ratio = (s.bidv && s.askv && +s.askv > 0) ? +s.bidv / +s.askv : 1;
+              let score = 0;
+              if (pch > 0.01) score++;
+              if (pch < -0.01) score--;
+              if (r < 40) score++;
+              if (r > 60) score--;
+              if (ratio > 1.2) score++;
+              if (ratio < 0.8) score--;
+              return score >= 2 ? 'STRONG_BUY' : score === 1 ? 'BUY' : score === -1 ? 'SELL' : score <= -2 ? 'STRONG_SELL' : 'NEUTRAL';
+            })(),
+          };
+
+          // Attach intraday analysis
+          stock.intraday = calculateIntraday(stock);
+          return stock;
+        });
+
+      console.log(`✅ ${stocks.length} stocks loaded | Buy signals: ${stocks.filter(s => s.intraday.isBuy).length}`);
       setCache('all', stocks);
       return stocks;
     } catch (e) {
@@ -319,12 +357,14 @@ async function getStock(s) {
 async function getSummary() {
   const all = await fetchAllStocks();
   const a = all.filter(s => s.price > 0);
+  const buyStocks = all.filter(s => s.intraday?.isBuy);
   return {
     total: all.length,
     active: a.length,
     gainers: a.filter(s => s.changePercent > 0).length,
     losers: a.filter(s => s.changePercent < 0).length,
-    avgChange: +(a.reduce((x, b) => x + b.changePercent, 0) / a.length).toFixed(2) || 0
+    avgChange: +(a.reduce((x, b) => x + b.changePercent, 0) / a.length).toFixed(2) || 0,
+    buySignals: buyStocks.length
   };
 }
 
@@ -340,14 +380,20 @@ async function getOpportunities(n = 10) {
   return all.filter(s => s.price > 0 && s.volume > 10000).sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent)).slice(0, n);
 }
 
+async function getBuySignals() {
+  const all = await fetchAllStocks();
+  return all
+    .filter(s => s.intraday?.isBuy)
+    .sort((a, b) => b.intraday.score - a.intraday.score);
+}
+
 function clearCache() {
   cache.clear();
   kseVolumeCache = null;
   kseVolumeLastFetch = 0;
-  volumeSpeedCache = { lastVolume: 0, lastTime: 0, candles: [] };
 }
 
 module.exports = {
   fetchAllStocks, getStock, getSummary, searchStocks,
-  getOpportunities, clearCache, getKSE100Volume, getVolumeSpeed, getToken
+  getOpportunities, clearCache, getKSE100Volume, getBuySignals, getToken
 };

@@ -1,6 +1,12 @@
 import React from 'react';
 
-export default function Header({ kse100, lastUpdated, nextUpdateIn, searchQuery, setSearchQuery, sortBy, setSortBy }) {
+export default function Header({ 
+  kse100, lastUpdated, nextUpdateIn, 
+  searchQuery, setSearchQuery, 
+  sortBy, setSortBy,
+  activeTab, setActiveTab,
+  buyCount
+}) {
   const isUp = kse100 ? kse100.change >= 0 : true;
   const dateStr = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }).toUpperCase();
   const timeStr = lastUpdated 
@@ -30,8 +36,19 @@ export default function Header({ kse100, lastUpdated, nextUpdateIn, searchQuery,
       </div>
 
       <div className="header-tabs">
-        <div className="tab active">KSE ALL</div>
-        <div className="tab">All Sectors</div>
+        <div 
+          className={`tab ${activeTab === 'all' ? 'active' : ''}`}
+          onClick={() => setActiveTab('all')}
+        >
+          KSE ALL
+        </div>
+        <div 
+          className={`tab ${activeTab === 'buy' ? 'active' : ''}`}
+          onClick={() => setActiveTab('buy')}
+        >
+          Buy Signals
+          {buyCount > 0 && <span className="tab-badge">{buyCount}</span>}
+        </div>
       </div>
 
       <div className="header-controls">
