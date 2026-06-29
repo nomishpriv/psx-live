@@ -45,20 +45,14 @@ app.get('/api/summary', (req, res) => {
   });
 });
 
-// Only serve static files in production (when dist exists)
+// Serve static files from client/dist
 const distPath = path.join(__dirname, 'client', 'dist');
-if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath));
-  app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
-} else {
-  app.get('/', (req, res) => res.json({
-    status: 'PSX Live API running', stocks: marketData.stocks.length,
-    kse100: marketData.kse100?.indexValue || null,
-    message: 'Open http://localhost:3000 for the frontend (dev mode)'
-  }));
-}
+app.use(express.static(distPath));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
+});
 
 app.listen(PORT, () => {
-  console.log(`🚀 PSX Live server running on http://localhost:${PORT}`);
+  console.log(`🚀 PSX Live server running on port ${PORT}`);
   console.log(`⏱️  Auto-refreshing market data every 60 seconds...`);
 });
