@@ -121,11 +121,25 @@ body {
   margin-bottom: -9px;
   border-bottom: 2px solid transparent;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
 }
 
 .tab.active {
   color: #fff;
   border-bottom-color: #22c55e;
+}
+
+.tab-badge {
+  background: #ef4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 8px;
+  margin-left: 6px;
+  min-width: 16px;
+  text-align: center;
 }
 
 /* Controls */
@@ -178,8 +192,8 @@ body {
   padding: 14px 16px;
   margin-bottom: 8px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
   transition: all 0.15s ease;
   cursor: pointer;
 }
@@ -187,33 +201,55 @@ body {
 .stock-card:hover {
   background: #181818;
   border-color: #252525;
-  transform: translateX(2px);
 }
 
-.stock-left {
+.stock-card.buy-card {
+  border-left: 3px solid #22c55e;
+  background: #0f1a0f;
+}
+
+/* Row 1: Avatar + Symbol + Price */
+.card-top {
   display: flex;
-  align-items: center;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.card-top-left {
+  display: flex;
+  align-items: flex-start;
   gap: 12px;
   flex: 1;
   min-width: 0;
 }
 
 .stock-avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 800;
-  font-size: 17px;
+  font-size: 16px;
   color: #fff;
   flex-shrink: 0;
   text-transform: uppercase;
 }
 
-.stock-info {
+.card-title {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .stock-symbol {
@@ -223,55 +259,99 @@ body {
   letter-spacing: 0.4px;
 }
 
+.buy-badge {
+  font-size: 9px;
+  font-weight: 800;
+  color: #000;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .stock-name {
   font-size: 11px;
   color: #777;
-  margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 220px;
+  max-width: 200px;
 }
 
-.stock-meta {
-  display: flex;
-  gap: 12px;
-  margin-top: 6px;
-  font-size: 10px;
-  color: #555;
-  font-weight: 500;
-  letter-spacing: 0.3px;
-}
-
-.stock-volume {
-  font-size: 10px;
-  color: #444;
-  margin-top: 4px;
-  font-weight: 500;
-  letter-spacing: 0.3px;
-}
-
-.stock-right {
+.card-top-right {
   text-align: right;
   flex-shrink: 0;
-  min-width: 90px;
+  min-width: 80px;
 }
 
 .stock-price {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   color: #fff;
   letter-spacing: -0.3px;
 }
 
 .stock-change {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  margin-top: 5px;
+  margin-top: 2px;
 }
 
 .stock-change.up { color: #22c55e; }
 .stock-change.down { color: #ef4444; }
+
+/* Row 2: High Low Volume */
+.card-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: #555;
+  font-weight: 500;
+  padding-left: 52px;
+}
+
+/* Row 3: Intraday boxes */
+.intraday-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid #1f1f1f;
+  margin-left: 52px;
+}
+
+.id-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  background: #161616;
+  border-radius: 8px;
+  padding: 6px 4px;
+  gap: 3px;
+}
+
+.id-label {
+  font-size: 9px;
+  color: #555;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.id-value {
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.id-value.entry { color: #3b82f6; }
+.id-value.target { color: #22c55e; }
+.id-value.stop { color: #ef4444; }
+.id-value.rr { color: #f59e0b; }
 
 /* ===== LOADING / EMPTY ===== */
 .loading, .no-results {
@@ -294,87 +374,4 @@ body {
 ::-webkit-scrollbar-thumb {
   background: #2a2a2a;
   border-radius: 3px;
-}
-/* ===== BUY SIGNAL STYLES ===== */
-
-.stock-card.buy-card {
-  border-left: 3px solid #22c55e;
-}
-
-.stock-symbol-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.buy-badge {
-  font-size: 9px;
-  font-weight: 800;
-  color: #000;
-  padding: 2px 6px;
-  border-radius: 4px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-
-/* Intraday row */
-.intraday-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid #1f1f1f;
-  gap: 6px;
-}
-
-.id-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-}
-
-.id-label {
-  font-size: 9px;
-  color: #555;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  margin-bottom: 3px;
-}
-
-.id-value {
-  font-size: 13px;
-  font-weight: 800;
-  color: #fff;
-}
-
-.id-value.entry { color: #3b82f6; }
-.id-value.target { color: #22c55e; }
-.id-value.stop { color: #ef4444; }
-.id-value.rr { color: #f59e0b; }
-
-/* Tab badge */
-.tab-badge {
-  background: #ef4444;
-  color: #fff;
-  font-size: 9px;
-  font-weight: 800;
-  padding: 1px 5px;
-  border-radius: 8px;
-  margin-left: 6px;
-  min-width: 16px;
-  text-align: center;
-}
-
-/* No results for buy tab */
-.no-results {
-  text-align: center;
-  padding: 80px 20px;
-  color: #444;
-  font-size: 14px;
-  font-weight: 500;
 }
