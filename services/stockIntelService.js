@@ -184,7 +184,6 @@ function calculateIntraday(stock) {
     changePercent, bidAskRatio
   } = stock;
 
-  // 7 checks for buy signal
   const checks = {
     bullish: price > open,
     abovePrevClose: price > prevClose,
@@ -198,27 +197,23 @@ function calculateIntraday(stock) {
   const passed = Object.values(checks).filter(Boolean).length;
   const isBuy = passed >= 5;
 
-  // Entry logic
   let entry = price;
   if (price < pivot) {
     entry = +(pivot + 0.01).toFixed(2);
   } else if (price > r1 && price < r2) {
-    entry = price; // momentum zone
+    entry = price;
   } else {
     entry = +(price + 0.05).toFixed(2);
   }
 
-  // Stop loss: max of S1, today's low, or 1.5% below entry
   let stopLoss = Math.max(s1 || 0, low || 0, +(entry * 0.985).toFixed(2));
   if (stopLoss >= entry) stopLoss = +(entry * 0.985).toFixed(2);
   if (stopLoss < lowerCircuit) stopLoss = lowerCircuit;
 
-  // Targets
   const target1 = r1 || +(entry * 1.02).toFixed(2);
   const target2 = r2 || +(entry * 1.04).toFixed(2);
   const target3 = r3 || upperCircuit || +(entry * 1.06).toFixed(2);
 
-  // Risk:Reward
   const risk = +(entry - stopLoss).toFixed(2);
   const reward1 = +(target1 - entry).toFixed(2);
   const reward2 = +(target2 - entry).toFixed(2);
@@ -240,9 +235,7 @@ function calculateIntraday(stock) {
     target2: +target2.toFixed(2),
     target3: +target3.toFixed(2),
     risk: risk > 0 ? risk : 0.01,
-    rr1,
-    rr2,
-    rr3,
+    rr1, rr2, rr3,
     confidence,
     score: passed,
     checks
@@ -275,6 +268,8 @@ async function fetchAllStocks() {
       const stocks = Object.entries(raw)
         .filter(([sym, s]) => {
           if (!s.c || +s.c <= 0) return false;
+          // ONLY ALLSHR stocks
+          if (!s.li || !Array.isArray(s.li) || !s.li.includes('ALLSHR')) return false;
           return true;
         })
         .map(([sym, s]) => {
@@ -305,6 +300,7 @@ async function fetchAllStocks() {
             rsi,
             upperCircuit, lowerCircuit,
             pivot, r1, r2, r3, s1, s2, s3,
+            indices: s.li || [],
             perf1w: +(s.p1w ?? 0), perf1m: +(s.p1m ?? 0), perf3m: +(s.p3m ?? 0), perf1y: +(s.p1y ?? 0), perfYtd: +(s.pytd ?? 0),
             eps: +(s.eps ?? 0), dps: +(s.dps ?? 0), pe: +(s.pr ?? 0), divYield: +(s.di ?? 0),
             volAvg1w: +(s.vaw ?? 0), volAvg10d, volAvg1m: +(s.vam ?? 0), volAvg30d: +(s.v30a ?? 0),
@@ -330,12 +326,11 @@ async function fetchAllStocks() {
             })(),
           };
 
-          // Attach intraday analysis
           stock.intraday = calculateIntraday(stock);
           return stock;
         });
 
-      console.log(`✅ ${stocks.length} stocks loaded | Buy signals: ${stocks.filter(s => s.intraday.isBuy).length}`);
+      console.log(`✅ ${stocks.length} ALLSHR stocks loaded | Buy signals: ${stocks.filter(s => s.intraday.isBuy).length}`);
       setCache('all', stocks);
       return stocks;
     } catch (e) {
